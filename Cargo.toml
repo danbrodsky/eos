@@ -1,0 +1,18 @@
+[package]
+name = "eos"
+version = "0.1.0"
+authors = ["danbrodsky <danbrodsky@pm.me>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["staticlib"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[dependencies]
