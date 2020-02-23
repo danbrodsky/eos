@@ -53,11 +53,6 @@ _start:
     # branch if a0 < a1 (unsigned)
     bltu    a0, a1, 1b
 2:
-3:
-    # Wait for interrupt/event
-    wfi
-    # jump back to label 3 (blocking call)
-    j       3b
 
     # li t5, 0xffff
     # csrw medeleg, t5
@@ -87,6 +82,9 @@ _start:
     la      ra, 4f
     # jump back through mepc, which is now set to kernel main function
     mret
+3:
 4:
+    # Wait for interrupt/event
     wfi
+    # jump back to label 3 (blocking call)
     j       4b
