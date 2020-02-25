@@ -1,6 +1,10 @@
 #![no_std] // don't load the standard library for rust
 #![feature(panic_info_message, asm)] // enable inline assembly and panic info
 
+const BACKSPACE: u8 = b'\x08';
+const NEWLINE: u8 = b'\x0a';
+const CARR_RET: u8 = b'\x0d';
+
 /*
 +-----------+
 |RUST MACROS|
@@ -79,6 +83,52 @@ extern "C" fn kmain() {
 
     println!("This is my operating system!");
     println!("I'm so awesome. If you start typing something, I'll show you what you typed!");
+
+    loop {
+        if let Some(c) = my_uart.get() {
+            match c as u8 {
+                8 => {
+                    // for backspace need to move back 1 char, then overwrite
+                    // char at point with space, then move back again
+                    print!("{}{}{}", 8 as char, ' ', 8 as char);
+                }
+                10 | 13 => {
+                    // newline or carriage return
+                    println!();
+                }
+                // escape char for escape sequence
+                0x1b => {
+                    if let Some(next_byte) = my_uart.get() {
+                        // [ for start of sequence
+                        if next_byte == 91 {
+                            if let Some(b) = my_uart.get() {
+                                match b as char {
+                                    'A' => {
+                                        println!("Up");
+                                    }
+                                    'B' => {
+                                        println!("Down");
+                                    }
+                                    'C' => {
+                                        println!("Right");
+                                    }
+                                    'D' => {
+                                        println!("Left");
+                                    }
+                                    _ => {
+                                        println!("Invalid");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    print!("{}", c as char);
+                }
+            }
+        }
+    }
 }
 
 // we use unsafe here so we can use raw pointers

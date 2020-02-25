@@ -67,7 +67,7 @@ impl Uart {
         }
     }
 
-    fn get(&mut self) -> Option<u8> {
+    pub fn get(&mut self) -> Option<u8> {
         // *mut is a raw mutable pointer, meant to be shared and modified so long
         // as it's not changed to None
         let ptr = self.base_addr as *mut u8;
@@ -86,7 +86,7 @@ impl Uart {
         }
     }
 
-    fn put(&mut self, c: u8) {
+    pub fn put(&mut self, c: u8) {
         let ptr = self.base_addr as *mut u8;
         unsafe {
             ptr.add(0).write_volatile(c);
