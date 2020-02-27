@@ -4,6 +4,7 @@
 const BACKSPACE: u8 = b'\x08';
 const NEWLINE: u8 = b'\x0a';
 const CARR_RET: u8 = b'\x0d';
+const ESCAPE: u8 = b'\x1b';
 
 /*
 +-----------+
@@ -87,17 +88,17 @@ extern "C" fn kmain() {
     loop {
         if let Some(c) = my_uart.get() {
             match c as u8 {
-                8 => {
+                BACKSPACE => {
                     // for backspace need to move back 1 char, then overwrite
                     // char at point with space, then move back again
                     print!("{}{}{}", 8 as char, ' ', 8 as char);
                 }
-                10 | 13 => {
+                NEWLINE | CARR_RET => {
                     // newline or carriage return
                     println!();
                 }
                 // escape char for escape sequence
-                0x1b => {
+                ESCAPE => {
                     if let Some(next_byte) = my_uart.get() {
                         // [ for start of sequence
                         if next_byte == 91 {
@@ -158,4 +159,5 @@ unsafe fn mmio_read(address: usize, offset: usize, value: u8) -> u8 {
 +------------+
 */
 
+pub mod page;
 pub mod uart;
