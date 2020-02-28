@@ -59,7 +59,7 @@ _start:
     # csrw mideleg, t5
 
     # set stack pointer to stack area defined by linker
-    la      sp, _stack
+    la      sp, _stack_end
 
     # load
     li      t0, (0b11 << 11) | (1 << 7) | (1 << 3)

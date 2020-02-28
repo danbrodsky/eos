@@ -82,6 +82,16 @@ extern "C" fn kmain() {
     let mut my_uart = uart::Uart::new(0x1000_0000);
     my_uart.init();
 
+    page::init();
+
+    for _ in 0..64 {
+        page::alloc(1);
+    }
+    page::alloc(1);
+    page::alloc(64);
+
+    page::print_page_allocations();
+
     println!("This is my operating system!");
     println!("I'm so awesome. If you start typing something, I'll show you what you typed!");
 
@@ -132,26 +142,26 @@ extern "C" fn kmain() {
     }
 }
 
-// we use unsafe here so we can use raw pointers
-unsafe fn mmio_write(address: usize, offset: usize, value: u8) {
-    // When we write to UART we set THR (Transmitter holding register)
-    // to point at location of UART MMIO address
-    let reg = address as *mut u8;
+// // we use unsafe here so we can use raw pointers
+// unsafe fn mmio_write(address: usize, offset: usize, value: u8) {
+//     // When we write to UART we set THR (Transmitter holding register)
+//     // to point at location of UART MMIO address
+//     let reg = address as *mut u8;
 
-    // then we write to (reg+offset) our value with
-    // write_volatile so compiler does not ignore
-    reg.add(offset).write_volatile(value);
-}
+//     // then we write to (reg+offset) our value with
+//     // write_volatile so compiler does not ignore
+//     reg.add(offset).write_volatile(value);
+// }
 
-unsafe fn mmio_read(address: usize, offset: usize, value: u8) -> u8 {
-    // When we read from UART we read RBR (Receive Buffer Register)
-    // to get values from UART MMIO
-    let reg = address as *mut u8;
+// unsafe fn mmio_read(address: usize, offset: usize, value: u8) -> u8 {
+//     // When we read from UART we read RBR (Receive Buffer Register)
+//     // to get values from UART MMIO
+//     let reg = address as *mut u8;
 
-    // then we read from (reg+offset) our value with
-    // read_volatile so compiler does not ignore
-    reg.add(offset).read_volatile()
-}
+//     // then we read from (reg+offset) our value with
+//     // read_volatile so compiler does not ignore
+//     reg.add(offset).read_volatile()
+// }
 
 /*
 +------------+
