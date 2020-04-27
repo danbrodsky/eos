@@ -100,6 +100,7 @@ pub fn init() {
         }
 
         // start of usable memory is after page table
+        // ALLOC_START = align_val(HEAP_START + num_pages * size_of::<Page>(), PAGE_ORDER);
         ALLOC_START = align_val(HEAP_START + num_pages * size_of::<Page>(), PAGE_ORDER);
     }
 }
@@ -171,7 +172,6 @@ pub fn zalloc(pages: usize) -> *mut u8 {
             // using big_ptr so we go double-word (DW) writes
             // instead of single byte (SB)
             unsafe {
-                (*big_ptr.add(i)) = 0;
             }
         }
     }
@@ -228,3 +228,206 @@ pub fn print_page_allocations() {
         println!();
     }
 }
+
+// ==========================================================================================================
+// MMU routine
+// ==========================================================================================================
+
+// all options are unsigned 64-bit regs
+// and our copy/clone fn are implicit
+#[repr(i64)]
+#[derive(Copy, Clone)]
+pub enum EntryBits {
+    None = 0,
+    Valid = 1 << 0,
+    Read = 1 << 1,
+    Write = 1 << 2,
+    Execute = 1 << 3,
+    User = 1 << 4,
+    Global = 1 << 5,
+    Access = 1 << 6,
+    Dirty = 1 << 7,
+
+    // convenience combinations
+    RW = 1 << 1 | 1 << 2,
+    RE = 1 << 1 | 1 << 3,
+    RWE = 1 << 1 | 1<< 2 | 1 << 3,
+
+    // user convenient combinations
+    URW = 1 << 1 | 1 << 2 | 1 << 4,
+    URE = 1 << 1 | 1 << 3 | 1 << 4,
+    URWE = 1 << 1 | 1<< 2 | 1 << 3 | 1 << 4,
+}
+
+impl EntryBits {
+    pub fn val(self) -> i64 {
+        self as i64
+    }
+}
+
+pub struct Entry {
+    pub entry: i64,
+}
+
+impl Entry {
+    // check if valid bit is set
+    pub fn is_valid(&self) -> bool {
+        (self.get_entry() & EntryBits::Valid.val()) != 0
+    }
+
+    pub fn is_invalid(&self) -> bool {
+        !self.is_valid()
+    }
+
+    // 0xe == W or X since only leaf would have these set
+    pub fn is_leaf(&self) -> bool {
+        (self.get_entry() & 0xe) != 0
+    }
+
+    pub fn is_branch(&self) -> bool {
+        !self.is_leaf()
+    }
+
+    pub fn set_entry(&mut self, entry: i64) {
+        self.entry = entry;
+    }
+
+    pub fn get_entry(&self) -> i64 {
+        self.entry
+    }
+}
+
+pub struct Table {
+    pub entries: [Entry; 512],
+}
+
+impl Table {
+    pub fn len() -> usize {
+        size_of::<Table>()
+    }
+}
+
+// Map a virt address to a physical address in a 4096-byte page
+// root: top-level mapping table
+// vaddr: virt addr to map
+// paddr: phys addr to map
+// bits: the privilege bits the page should have
+// level: the level to start at (always 0)
+pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64, level: usize) {
+    // make sure we have a leaf
+    assert!(bits & 0xe != 0);
+
+    // each vpn is 9 bits (0b1_1111_1111)
+    let vpn = [
+        // VPN[0] = virt addr bits 20-12
+        (vaddr >> 12) & 0x1ff,
+        // VPN[1] = virt addr 29-21
+        (vaddr >> 21) & 0x1ff,
+        // VPN[2] = virt addr 38-30
+        (vaddr >> 30) & 0x1ff,
+
+    ];
+
+    // each ppn is 9 bits except the last 1 is 26 bits
+    let ppn = [
+        // PPN[0] = paddr[20:12]
+        (paddr >> 12) & 0x1ff,
+        // PPN[1] = paddr[29:21]
+        (paddr >> 21) & 0x1ff,
+        // PPN[2] = paddr[55:30]
+        (paddr >> 30) & 0x3ff_ffff,
+    ];
+
+    let mut v = &mut root.entries[vpn[2]];
+
+    for i in (level..2).rev() {
+        if !v.is_valid() {
+            let page = zalloc(1);
+
+            // v's entry is a 64-bit heap address that's 4096 byte aligned
+            // shifted right by 2 to make space for flags
+            v.set_entry(
+                (page as i64 >> 2)
+                | EntryBits::Valid.val(),
+            );
+        }
+
+        // the page we get should already be 4096 byte-aligned
+        // and would be the page table for this lower set of pages
+        let entry = ((v.get_entry() & !0x3ff) << 2) as *mut Entry;
+        // get the address of the next page table starting point
+        v = unsafe { entry.add(vpn[i]).as_mut().unwrap() };
+    }
+    // after the prev loop, v is now pointing to the
+    // entry loc in the mapping table (virt->phys)
+
+    // need to shift paddr vals to correct value for page table entry
+    let entry = (ppn[2] << 28) as i64 |   // PPN[2] = [53:28]
+    (ppn[1] << 19) as i64 |   // PPN[1] = [27:19]
+    (ppn[0] << 10) as i64 |   // PPN[0] = [18:10]
+    bits |                    // Specified bits, such as User, Read, Write, etc
+    EntryBits::Valid.val();   // Valid bit
+
+    v.set_entry(entry);
+
+}
+
+pub fn unmap(root: &mut Table) {
+    for lv2 in 0..Table::len() {
+        let ref entry_lv2 = root.entries[lv2];
+        if entry_lv2.is_valid() && entry_lv2.is_branch() {
+            // valid entry, free it and the lower table entries
+            let memaddr_lv1 = (entry_lv2.get_entry() & !0x3ff) << 2;
+            let table_lv1 = unsafe {
+                (memaddr_lv1 as *mut Table).as_mut().unwrap()
+            };
+            for lv1 in 0..Table::len() {
+                let ref entry_lv1 = table_lv1.entries[lv1];
+                if entry_lv1.is_valid() && entry_lv1.is_branch() {
+                    let memaddr_lv0 = (entry_lv1.get_entry() & !0x3ff) << 2;
+
+                    // last level, free it
+                    dealloc(memaddr_lv0 as *mut u8);
+                }
+            }
+
+            dealloc(memaddr_lv1 as *mut u8);
+
+        }
+    }
+}
+
+pub fn virt_to_phys(root: &Table, vaddr: usize) ->  Option<usize> {
+    // Walk the page table
+    let vpn = [
+        // VPN[0] = virt addr bits 20-12
+        (vaddr >> 12) & 0x1ff,
+        // VPN[1] = virt addr 29-21
+        (vaddr >> 21) & 0x1ff,
+        // VPN[2] = virt addr 38-30
+        (vaddr >> 30) & 0x1ff,
+    ];
+
+    let mut v = &root.entries[vpn[2]];
+    for i in (0..=2).rev() {
+        if v.is_invalid() {
+            // invalid, send a page fault
+            break;
+        }
+        else if v.is_leaf() {
+            // if we're at a leaf then read and return the PPN
+            // PPN is 9 bits and starts at bit 12
+            let off_mask = (1 << (12 + i * 9)) - 1;
+            let vaddr_pgoff = vaddr & off_mask;
+            let addr = ((v.get_entry() << 2) as usize) & !off_mask;
+            return Some(addr | vaddr_pgoff);
+        }
+
+        let entry = ((v.get_entry() & !0x3ff) << 2) as *const Entry;
+
+        v = unsafe { entry.add(vpn[i-1]).as_ref().unwrap() };
+    }
+
+    None
+}
+

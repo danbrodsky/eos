@@ -71,6 +71,19 @@ extern "C" fn abort() -> ! {
     }
 }
 
+
+pub fn id_map_range(root: &mut page::Table, start: usize, end: usize, bits: i64) {
+    let mut memaddr = start & !(page::PAGE_SIZE - 1);
+    let num_kb_pages = (page::align_val(end, 12) - memaddr) / page::PAGE_SIZE;
+
+    for _ in 0..num_kb_pages {
+        page::map(root, memaddr, memaddr, bits, 0);
+        memaddr += 1 << 12;
+    }
+
+}
+
+
 /*
 +-----------+
 |ENTRY POINT|
@@ -92,54 +105,57 @@ extern "C" fn kmain() {
 
     page::print_page_allocations();
 
-    println!("This is my operating system!");
-    println!("I'm so awesome. If you start typing something, I'll show you what you typed!");
+    // TODO: stopped at end of ch3.2 because no kmem implementation
 
-    loop {
-        if let Some(c) = my_uart.get() {
-            match c as u8 {
-                BACKSPACE => {
-                    // for backspace need to move back 1 char, then overwrite
-                    // char at point with space, then move back again
-                    print!("{}{}{}", 8 as char, ' ', 8 as char);
-                }
-                NEWLINE | CARR_RET => {
-                    // newline or carriage return
-                    println!();
-                }
-                // escape char for escape sequence
-                ESCAPE => {
-                    if let Some(next_byte) = my_uart.get() {
-                        // [ for start of sequence
-                        if next_byte == 91 {
-                            if let Some(b) = my_uart.get() {
-                                match b as char {
-                                    'A' => {
-                                        println!("Up");
-                                    }
-                                    'B' => {
-                                        println!("Down");
-                                    }
-                                    'C' => {
-                                        println!("Right");
-                                    }
-                                    'D' => {
-                                        println!("Left");
-                                    }
-                                    _ => {
-                                        println!("Invalid");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    print!("{}", c as char);
-                }
-            }
-        }
-    }
+
+    // println!("This is my operating system!");
+    // println!("I'm so awesome. If you start typing something, I'll show you what you typed!");
+
+    // loop {
+    //     if let Some(c) = my_uart.get() {
+    //         match c as u8 {
+    //             BACKSPACE => {
+    //                 // for backspace need to move back 1 char, then overwrite
+    //                 // char at point with space, then move back again
+    //                 print!("{}{}{}", 8 as char, ' ', 8 as char);
+    //             }
+    //             NEWLINE | CARR_RET => {
+    //                 // newline or carriage return
+    //                 println!();
+    //             }
+    //             // escape char for escape sequence
+    //             ESCAPE => {
+    //                 if let Some(next_byte) = my_uart.get() {
+    //                     // [ for start of sequence
+    //                     if next_byte == 91 {
+    //                         if let Some(b) = my_uart.get() {
+    //                             match b as char {
+    //                                 'A' => {
+    //                                     println!("Up");
+    //                                 }
+    //                                 'B' => {
+    //                                     println!("Down");
+    //                                 }
+    //                                 'C' => {
+    //                                     println!("Right");
+    //                                 }
+    //                                 'D' => {
+    //                                     println!("Left");
+    //                                 }
+    //                                 _ => {
+    //                                     println!("Invalid");
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //             _ => {
+    //                 print!("{}", c as char);
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 // // we use unsafe here so we can use raw pointers
